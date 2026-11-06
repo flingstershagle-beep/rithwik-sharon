@@ -760,19 +760,41 @@
       clearTimeout(timer);
     }
   }
+  function cleanDownloadFilename(value){
+    const cleaned = String(value || 'rkefx-download')
+      .replace(/[\\/:*?"<>|\r\n]+/g, '-')
+      .replace(/\.+$/g, '')
+      .slice(0, 120);
+    return cleaned || 'rkefx-download';
+  }
+
   async function triggerDownload(url, filename){
     if (!isDownloadUrl(url)) throw new Error('The API did not return a valid download link.');
-    // The download endpoint is same-origin and streams the file with an attachment
-    // header. This avoids cross-origin download restrictions on Windows, macOS,
-    // Linux, Android and iOS browsers.
-    const target = url.startsWith('/api/file?') ? url : ('/api/download?url=' + encodeURIComponent(url) + '&filename=' + encodeURIComponent(filename || 'rkefx-download'));
-    const a = document.createElement('a');
-    a.href = target;
-    a.download = filename || 'rkefx-download';
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+
+    const finalName = cleanDownloadFilename(filename);
+    let target;
+
+    if (url.startsWith('/api/file?')) {
+      // This is already a same-origin file endpoint. It MUST return
+      // Content-Disposition: attachment; filename="..." from the server.
+      const fileUrl = new URL(url, window.location.origin);
+      fileUrl.searchParams.set('filename', finalName);
+      target = fileUrl.pathname + fileUrl.search;
+    } else {
+      // External media URLs must pass through the same-origin download proxy.
+      // The proxy must respond with Content-Disposition: attachment.
+      target = '/api/download?url=' + encodeURIComponent(url) +
+        '&filename=' + encodeURIComponent(finalName);
+    }
+
+    const link = document.createElement('a');
+    link.href = target;
+    link.download = finalName;
+    link.style.display = 'none';
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
     return 'download';
   }
   function fmtNum(n){
@@ -1167,7 +1189,11 @@
     resultsEl.innerHTML = resultsHead('Facebook · Ready to Download') + `
       <div class="result-card">
         <div class="thumb">
-          <div class="fb-preview"><video src="${esc(r.videoPreview)}" controls preload="metadata" playsinline></video></div>
+          <div class="fb-preview" aria-label="Facebook video ready to download">
+            <div style="padding:20px;text-align:center;color:#a9a8cc;font-size:.9rem">
+              Video ready — choose a download quality
+            </div>
+          </div>
         </div>
         <div class="result-body">
           <div class="result-title">${esc(r.title)}</div>
